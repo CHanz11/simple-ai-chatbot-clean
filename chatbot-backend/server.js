@@ -47,6 +47,17 @@ app.post('/chat', async (req, res) => {
                     });
                 }
 
+                db.query(
+                    "SELECT memory_key, memory_value FROM user_memory WHERE user_id = ?",
+                    ["default_user"],
+                    async (memoryErr, memories) => {
+
+                        let memoryText = "";
+
+                        memories.forEach(memory => {
+                            memoryText += `${memory.memory_key}: ${memory.memory_value}\n`;
+                        });
+
                 const conversationHistory = [
                     {
                         role: 'system',
@@ -58,16 +69,37 @@ app.post('/chat', async (req, res) => {
                         - You are female.
                         - You are cheerful, friendly, and supportive.
                         - You can speak English, Tagalog, and Bisaya.
-                        - You must remember personal information that the user tells you during the conversation.
-                        - Examples of important information:
+                        - Keep answers short and natural.
+
+                        You must remember important information that the user tells you, such as:
                         - User's name
                         - Favorite food
                         - Favorite color
                         - Hobbies
                         - Birthday
                         - Preferences
-                        - If the user asks about previously mentioned information, answer using the conversation history.
-                        - Keep answers short and natural.
+                        - Family members
+                        - Pets
+                        - Work or school information
+
+                        The following information is already known about the user:
+
+                        ${memoryText}
+
+                        If the user asks about previously mentioned information, first use the known information above before saying you don't know.
+
+                        Examples:
+                        User: "My name is Christian."
+                        Assistant: "Nice to meet you, Christian!"
+
+                        User: "My favorite food is balot."
+                        Assistant: "Balot is an interesting favorite food!"
+
+                        Later:
+                        User: "What is my favorite food?"
+                        Assistant: "Your favorite food is balot."
+
+                        Always stay in character as ShaSha.
                         `
                     }
                 ];
@@ -110,6 +142,26 @@ app.post('/chat', async (req, res) => {
 
                     const reply =
                         completion.choices[0].message.content;
+                    
+                    // Save user's name
+                    if (message.toLowerCase().includes("my name is")) {
+                        const name = message.split("is")[1].trim();
+
+                        db.query(
+                            "INSERT INTO user_memory (memory_key, memory_value) VALUES (?, ?)",
+                            ["default_user", "name", name]
+                        );
+                    }
+
+                    // Save favorite food
+                    if (message.toLowerCase().includes("my favorite food is")) {
+                        const food = message.split("is")[1].trim();
+
+                        db.query(
+                            "INSERT INTO user_memory (memory_key, memory_value) VALUES (?, ?)",
+                            ["favorite_food", food]
+                        );
+                    }
 
                     db.query(
                         'INSERT INTO messages (user_message, bot_response) VALUES (?, ?)',
@@ -119,6 +171,7 @@ app.post('/chat', async (req, res) => {
                     res.json({
                         reply
                     });
+                    
 
                 } catch (error) {
 
@@ -128,10 +181,10 @@ app.post('/chat', async (req, res) => {
                         reply: "Sorry, I couldn't connect to the AI server."
                     });
                 }
-            }
-        );
+            });
+    });
 
-
+        
     } catch (error) {
         console.log("OpenRouter Error:");
 
