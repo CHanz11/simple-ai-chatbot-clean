@@ -32,13 +32,88 @@ db.connect((err) => {
     }
 });
 
+// Register/Login User
+app.post('/register', (req, res) => {
+
+    const { name, email } = req.body;
+
+
+    if (!name || !email) {
+        return res.status(400).json({
+            error: "Name and email are required"
+        });
+    }
+
+
+    // Check if user already exists
+
+    db.query(
+        "SELECT * FROM users WHERE email = ?",
+        [email],
+        (err, results) => {
+
+            if (err) {
+                return res.status(500).json({
+                    error: "Database error"
+                });
+            }
+
+
+            // Existing user
+
+            if (results.length > 0) {
+
+                const user = results[0];
+
+                return res.json({
+                    message: `Welcome back ${user.name}!`,
+                    userId: user.id,
+                    name: user.name
+                });
+
+            }
+
+
+
+            // Create new user
+
+            db.query(
+                "INSERT INTO users (name,email) VALUES (?,?)",
+                [name,email],
+                (err,result)=>{
+
+                    if(err){
+                        return res.status(500).json({
+                            error:"Cannot create user"
+                        });
+                    }
+
+
+                    res.json({
+
+                        message:`Nice to meet you ${name}!`,
+                        userId: result.insertId,
+                        name:name
+
+                    });
+
+                }
+            );
+
+
+        }
+    );
+
+});
+
 // Test API
 app.post('/chat', async (req, res) => {
     try {
-        const { message } = req.body;
+        const { message, userId } = req.body;
 
         db.query(
-            'SELECT user_message, bot_response FROM messages ORDER BY id DESC LIMIT 50',
+            'SELECT user_message, bot_response FROM messages WHERE user_id = ? ORDER BY id DESC LIMIT 50',
+            [userId],
             async (err, results) => {
 
                 if (err) {
@@ -164,8 +239,8 @@ app.post('/chat', async (req, res) => {
                     }
 
                     db.query(
-                        'INSERT INTO messages (user_message, bot_response) VALUES (?, ?)',
-                        [message, reply]
+                        'INSERT INTO messages (user_message, bot_response, user_id) VALUES (?, ?, ?)',
+                        [message, reply, userId]
                     );
 
                     res.json({
@@ -205,6 +280,41 @@ app.post('/chat', async (req, res) => {
             reply: "Sorry, I am not available right now."
         });
     }
+});
+
+app.get("/messages", (req, res) => {
+
+    db.query(
+        "SELECT user_message, bot_response FROM messages ORDER BY id ASC LIMIT 100",
+        (err, results) => {
+
+            if (err) {
+                return res.status(500).json({
+                    error: "Database error"
+                });
+            }
+
+            const history = [];
+
+            results.forEach(chat => {
+
+                history.push({
+                    sender: "user",
+                    text: chat.user_message
+                });
+
+                history.push({
+                    sender: "ShaSha",
+                    text: chat.bot_response
+                });
+
+            });
+
+            res.json(history);
+
+        }
+    );
+
 });
 
 app.listen(5000, () => {
