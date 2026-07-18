@@ -106,6 +106,96 @@ app.post('/register', (req, res) => {
 
 });
 
+//Guest Route
+app.post("/guest", (req, res) => {
+
+    const guestName = "Guest";
+    const guestToken = "guest_" + Date.now();
+
+    db.query(
+        `
+        INSERT INTO users
+        (name,email,user_type,guest_token)
+        VALUES (?,?,?,?)
+        `,
+        [
+            guestName,
+            null,
+            "guest",
+            guestToken
+        ],
+        (err, result) => {
+
+            if (err) {
+                console.error("Guest Route Error:");
+                console.error(err);
+
+                return res.status(500).json({
+                    error: err.message
+                });
+            }
+
+            res.json({
+                userId: result.insertId,
+                name: guestName,
+                type: "guest",
+                guestToken: guestToken
+            });
+
+        }
+    );
+
+});
+
+// Get previous messages
+app.get('/messages/:userId', (req, res) => {
+
+    const userId = req.params.userId;
+
+
+    db.query(
+        `
+        SELECT user_message, bot_response
+        FROM messages
+        WHERE user_id = ?
+        ORDER BY id ASC
+        `,
+        [userId],
+        (err, results)=>{
+
+            if(err){
+                return res.status(500).json({
+                    error:"Database error"
+                });
+            }
+
+
+            const chatHistory = [];
+
+
+            results.forEach(chat=>{
+
+                chatHistory.push({
+                    sender:"user",
+                    text:chat.user_message
+                });
+
+
+                chatHistory.push({
+                    sender:"ShaSha",
+                    text:chat.bot_response
+                });
+
+            });
+
+
+            res.json(chatHistory);
+
+        }
+    );
+
+});
+
 // Test API
 app.post('/chat', async (req, res) => {
     try {
@@ -124,7 +214,7 @@ app.post('/chat', async (req, res) => {
 
                 db.query(
                     "SELECT memory_key, memory_value FROM user_memory WHERE user_id = ?",
-                    ["default_user"],
+                    [userId],
                     async (memoryErr, memories) => {
 
                         let memoryText = "";
@@ -215,16 +305,21 @@ app.post('/chat', async (req, res) => {
                         });
                     }
 
-                    const reply =
-                        completion.choices[0].message.content;
+                    let reply =
+                    completion.choices[0].message.content;
+
+                    reply = reply.replace(
+                    /User Safety:.*?Response Safety:.*?/gi,
+                    ""
+                    ).trim();
                     
                     // Save user's name
                     if (message.toLowerCase().includes("my name is")) {
                         const name = message.split("is")[1].trim();
 
                         db.query(
-                            "INSERT INTO user_memory (memory_key, memory_value) VALUES (?, ?)",
-                            ["default_user", "name", name]
+                            "INSERT INTO user_memory (memory_key, memory_value, user_id) VALUES (?, ?, ?)",
+                            ["name", name, userId]
                         );
                     }
 
@@ -233,8 +328,8 @@ app.post('/chat', async (req, res) => {
                         const food = message.split("is")[1].trim();
 
                         db.query(
-                            "INSERT INTO user_memory (memory_key, memory_value) VALUES (?, ?)",
-                            ["favorite_food", food]
+                            "INSERT INTO user_memory (memory_key, memory_value, user_id) VALUES (?, ?, ?)",
+                            ["favorite_food", food, userId]
                         );
                     }
 
