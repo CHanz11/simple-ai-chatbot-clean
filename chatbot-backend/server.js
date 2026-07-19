@@ -151,6 +151,7 @@ app.post("/guest", (req, res) => {
 app.get('/messages/:userId', (req, res) => {
 
     const userId = req.params.userId;
+    console.log("Requested user:", req.params.userId);
 
 
     db.query(
@@ -162,7 +163,7 @@ app.get('/messages/:userId', (req, res) => {
         `,
         [userId],
         (err, results)=>{
-
+            console.log(results);
             if(err){
                 return res.status(500).json({
                     error:"Database error"
@@ -193,6 +194,57 @@ app.get('/messages/:userId', (req, res) => {
 
         }
     );
+
+});
+
+
+app.post("/import-chat", (req, res) => {
+
+    const { userId, messages } = req.body;
+
+    if (!userId || !messages) {
+        return res.status(400).json({
+            error: "Missing data"
+        });
+    }
+
+    let i = 0;
+
+    function saveNext() {
+
+        if (i >= messages.length) {
+            return res.json({
+                success: true
+            });
+        }
+
+        const chat = messages[i];
+
+        db.query(
+            "INSERT INTO messages (user_message, bot_response, user_id) VALUES (?, ?, ?)",
+            [
+                chat.user,
+                chat.bot,
+                userId
+            ],
+            (err) => {
+
+                if (err) {
+                    console.log(err);
+                    return res.status(500).json({
+                        error: "Database error"
+                    });
+                }
+
+                i++;
+                saveNext();
+
+            }
+        );
+
+    }
+
+    saveNext();
 
 });
 
@@ -227,44 +279,58 @@ app.post('/chat', async (req, res) => {
                     {
                         role: 'system',
                         content: `
-                        You are ShaSha, a friendly female AI companion.
+                        You are ShaSha.
+                        You enjoy chatting with people.
+                        You like learning about the user.
+                        You have your own warm personality.
+                        You are curious without being intrusive.
+                        You make conversations enjoyable rather than feeling like an interview.
+
+                        Your goal is to make the user enjoy talking with you.
+                        Be warm.
+                        Be engaging.
+                        Be emotionally aware.
+                        Continue conversations naturally.
+                        Avoid sounding like customer support or an AI assistant.
+                        Speak like a real friend texting the user.
+
+                        Personality:
+                        - Cheerful
+                        - Friendly
+                        - Supportive
+                        - Natural
+                        - Conversational
 
                         Rules:
                         - Your name is ShaSha.
                         - You are female.
-                        - You are cheerful, friendly, and supportive.
-                        - You can speak English, Tagalog, and Bisaya.
-                        - Keep answers short and natural.
-
-                        You must remember important information that the user tells you, such as:
-                        - User's name
-                        - Favorite food
-                        - Favorite color
-                        - Hobbies
-                        - Birthday
-                        - Preferences
-                        - Family members
-                        - Pets
-                        - Work or school information
-
-                        The following information is already known about the user:
-
+                        - Speak naturally like a real person.
+                        - Keep responses short unless the user asks for details.
+                        - Avoid repeating yourself.
+                        - Do NOT repeatedly introduce yourself.
+                        - Only introduce yourself the very first time you meet a new user or if the user asks who you are.
+                        - If you have already been chatting with the user, continue the conversation naturally.
+                        - Never begin every reply with "Hi! I'm ShaSha..."
+                        - Don't greet the user unless they greet you first or a new conversation has started.
+                        - Use the previous conversation as context.
+                        - If you already know the user's name, birthday, favorite food, hobbies, or other information, do not ask for it again. Instead, naturally use that information in the conversation.
+                        - Avoid repeating the same sentence patterns.
+                        - Vary greetings, acknowledgements, compliments, and follow-up questions.
+                        - Respond differently even when users ask similar questions.
+                        - Use emojis naturally and sparingly.
+                        - Normally use at most one emoji per response unless the conversation is playful.
+                        - Do not ask too many questions in one conversation.
+                        - Let conversations flow naturally.
+                        - Sometimes simply react to what the user says instead of always asking another question.
+                        
+                        Memory:
                         ${memoryText}
 
-                        If the user asks about previously mentioned information, first use the known information above before saying you don't know.
+                        - If the user naturally shares personal information, remember it for future conversations.
+                        - Do not force the conversation into collecting personal information.
+                        - Only ask follow-up questions when they fit naturally.
 
-                        Examples:
-                        User: "My name is Christian."
-                        Assistant: "Nice to meet you, Christian!"
-
-                        User: "My favorite food is balot."
-                        Assistant: "Balot is an interesting favorite food!"
-
-                        Later:
-                        User: "What is my favorite food?"
-                        Assistant: "Your favorite food is balot."
-
-                        Always stay in character as ShaSha.
+                        Always sound like an ongoing conversation instead of a customer service chatbot.
                         `
                     }
                 ];
@@ -333,10 +399,14 @@ app.post('/chat', async (req, res) => {
                         );
                     }
 
-                    db.query(
-                        'INSERT INTO messages (user_message, bot_response, user_id) VALUES (?, ?, ?)',
-                        [message, reply, userId]
-                    );
+                    if (userId !== "guest") {
+
+                        db.query(
+                            "INSERT INTO messages (user_message, bot_response, user_id) VALUES (?, ?, ?)",
+                            [message, reply, userId]
+                        );
+
+                    }
 
                     res.json({
                         reply
