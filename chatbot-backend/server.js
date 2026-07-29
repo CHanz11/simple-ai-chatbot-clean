@@ -5,6 +5,8 @@ const cors = require("cors");
 const mysql = require("mysql2");
 const axios = require("axios");
 const OpenAI = require('openai');
+const bcrypt = require("bcryptjs");
+const jwt = require("jsonwebtoken");
 
 const openrouter = new OpenAI({
     apiKey: process.env.OPENROUTER_API_KEY,
@@ -15,6 +17,49 @@ const app = express();
 
 app.use(cors());
 app.use(express.json());
+
+// ========================================
+// ADMIN AUTHENTICATION MIDDLEWARE
+// ========================================
+
+function adminAuth(req, res, next) {
+
+    const authHeader = req.headers.authorization;
+
+    if (!authHeader) {
+        return res.status(401).json({
+            error: "No authorization token"
+        });
+    }
+
+    const token = authHeader.split(" ")[1];
+
+    if (!token) {
+        return res.status(401).json({
+            error: "Invalid authorization token"
+        });
+    }
+
+    try {
+
+        const decoded = jwt.verify(
+            token,
+            process.env.ADMIN_JWT_SECRET
+        );
+        req.admin = decoded;
+
+        next();
+
+    }
+    catch (error) {
+
+        return res.status(401).json({
+            error: "Invalid or expired token"
+        });
+
+    }
+
+}
 
 // MySQL Connection
 const db = mysql.createConnection({
@@ -30,6 +75,19 @@ db.connect((err) => {
     } else {
         console.log("Connected to MySQL!");
     }
+});
+
+// ========================================
+// TEST PROTECTED ADMIN ROUTE
+// ========================================
+
+app.get("/api/admin/test", adminAuth, (req, res) => {
+
+    res.json({
+        message: "Admin authentication works!",
+        admin: req.admin
+    });
+
 });
 
 // Register/Login User
@@ -479,6 +537,81 @@ app.get("/messages", (req, res) => {
 
         }
     );
+
+});
+
+app.post("/api/admin/login", async (req, res) => {
+
+    try {
+
+        const { username, password } = req.body;
+
+        if (!username || !password) {
+
+            return res.status(400).json({
+                error: "Username and password are required"
+            });
+
+        }
+
+        const [admins] = await db.promise().query(
+            "SELECT * FROM admins WHERE username = ? LIMIT 1",
+            [username]
+        );
+
+        if (admins.length === 0) {
+
+            return res.status(401).json({
+                error: "Invalid username or password"
+            });
+
+        }
+
+        const admin = admins[0];
+
+        const passwordMatch = await bcrypt.compare(
+            password,
+            admin.password_hash
+        );
+
+        if (!passwordMatch) {
+
+            return res.status(401).json({
+                error: "Invalid username or password"
+            });
+
+        }
+
+        const token = jwt.sign(
+            {
+                adminId: admin.id,
+                username: admin.username
+            },
+            process.env.ADMIN_JWT_SECRET,
+            {
+                expiresIn: "8h"
+            }
+        );
+
+        res.json({
+            message: "Login successful",
+            token: token,
+            admin: {
+                id: admin.id,
+                username: admin.username
+            }
+        });
+
+    }
+    catch (error) {
+
+        console.error("Admin Login Error:", error);
+
+        res.status(500).json({
+            error: "Server error"
+        });
+
+    }
 
 });
 
